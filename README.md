@@ -1,11 +1,11 @@
-# dpllctl
+# dpll-tui
 
 ncurses TUI for inspecting and controlling Linux DPLL (Digital Phase-Locked Loop) devices via netlink / YNL.
 
 ## Screenshot (conceptual)
 
 ```
- dpllctl  |  device 1/2: PPS  id=1  |  lock=locked  mode=automatic
+ dpll-tui  |  device 1/2: PPS  id=1  |  lock=locked  mode=automatic
  q quit | Tab device | Up/Down select | s state | p prio | a phase_adj | r refresh
 ────────────────────────────────────────────────────────────────────────────────────
  #    pin_id state          prio   phase_off(fs)  label
@@ -44,13 +44,13 @@ chmod +x scripts/deps_check_fix_build.sh
 make
 ```
 
-Produces `./dpllctl`.
+Produces `./dpll-tui`.
 
 ## Usage
 
 ```bash
 # Needs root for netlink DPLL access
-sudo ./dpllctl
+sudo ./dpll-tui
 ```
 
 ### Key bindings
@@ -77,7 +77,7 @@ sudo ./dpllctl
 │   ├── dpll_utils.h      # DPLL netlink wrapper API
 │   └── log.h             # Logging macros
 ├── src/
-│   ├── dpllctl.c         # TUI (ncurses + main)
+│   ├── dpll-tui.c         # TUI (ncurses + main)
 │   └── dpll_utils.c      # DPLL netlink operations (YNL)
 └── scripts/
     └── deps_check_fix_build.sh

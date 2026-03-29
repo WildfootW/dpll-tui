@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 #
 # deps_check_fix_build.sh
-# Interactive dependency checker for dpllctl.
+# Interactive dependency checker for dpll-tui.
 #
 # Dependencies: libynl (kernel-tools-libs-devel), ncurses-devel
 #
@@ -35,7 +35,7 @@ while [ "${1:-}" != "" ]; do
     --no-build) DO_BUILD=0; shift ;;
     -h|--help)
       say "Usage: $SCRIPT_NAME [--no-build]"
-      say "Checks ynl headers + ncurses, then builds dpllctl."
+      say "Checks ynl headers + ncurses, then builds dpll-tui."
       exit 0 ;;
     *) die "unknown arg: $1" ;;
   esac
@@ -129,11 +129,11 @@ fi
 
 if [ "$DO_BUILD" -eq 1 ]; then
   say ""
-  say "==> Build dpllctl"
+  say "==> Build dpll-tui"
   cd "$REPO_ROOT"
   make clean
   make
-  say "Done: $REPO_ROOT/dpllctl"
+  say "Done: $REPO_ROOT/dpll-tui"
 else
   say ""
   say "--no-build: skipping make."

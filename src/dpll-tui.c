@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: MIT
  *
- * dpllctl - ncurses TUI to inspect and control DPLL devices via YNL (netlink).
+ * dpll-tui - ncurses TUI to inspect and control DPLL devices via YNL (netlink).
  *
  * Keys:
  *   q / Esc    quit
@@ -235,7 +235,7 @@ static void draw_header(const DeviceStatus *ds, int sel_dev, int ndev)
 {
 	erase();
 	attron(A_BOLD);
-	mvprintw(0, 0, " dpllctl  |  device %d/%d: %s  id=%" PRIu32
+	mvprintw(0, 0, " dpll-tui  |  device %d/%d: %s  id=%" PRIu32
 	         "  |  lock=%s  mode=%s",
 	         sel_dev + 1, ndev, ds->type_name, ds->device_id,
 	         dpll_lock_status_str(ds->lock_status),

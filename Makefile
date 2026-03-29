@@ -1,4 +1,4 @@
-# Makefile for dpllctl
+# Makefile for dpll-tui
 # SPDX-License-Identifier: MIT
 
 CC       = gcc
@@ -11,8 +11,8 @@ HDR_DIR = hdr
 OBJ_DIR = obj
 
 HEADERS = $(HDR_DIR)/dpll_utils.h $(HDR_DIR)/log.h
-OBJECTS = $(OBJ_DIR)/dpllctl.o $(OBJ_DIR)/dpll_utils.o
-TARGET  = dpllctl
+OBJECTS = $(OBJ_DIR)/dpll-tui.o $(OBJ_DIR)/dpll_utils.o
+TARGET  = dpll-tui
 
 all: $(TARGET)
 
@@ -23,7 +23,7 @@ $(TARGET): $(OBJECTS)
 	$(CC) -o $@ $(OBJECTS) $(LDFLAGS)
 	@echo "Built $@ successfully"
 
-$(OBJ_DIR)/dpllctl.o: $(SRC_DIR)/dpllctl.c $(HEADERS) | $(OBJ_DIR)
+$(OBJ_DIR)/dpll-tui.o: $(SRC_DIR)/dpll-tui.c $(HEADERS) | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -I. -c $< -o $@
 
 $(OBJ_DIR)/dpll_utils.o: $(SRC_DIR)/dpll_utils.c $(HEADERS) | $(OBJ_DIR)
