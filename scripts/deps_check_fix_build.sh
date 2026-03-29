@@ -47,6 +47,7 @@ trap "rm -rf '$TMP'" EXIT INT TERM
 say ""
 say "==> 1) Check ynl headers (<ynl/ynl.h>, <ynl/dpll-user.h>)"
 cat >"$TMP/ynl.c" <<'EOF'
+#include <string.h>
 #include <ynl/ynl.h>
 #include <ynl/dpll-user.h>
 int main(void) { return 0; }
@@ -92,6 +93,7 @@ fi
 say ""
 say "==> 3) Check libynl linker (-lynl)"
 cat >"$TMP/lynl.c" <<'EOF'
+#include <string.h>
 #include <ynl/ynl.h>
 int main(void) { return 0; }
 EOF

@@ -217,8 +217,12 @@ static size_t build_pin_rows(struct ynl_sock *sock, uint32_t dev_id, PinRow **ou
 			rows = nr;
 		}
 		rows[n].pin_id = pin->id;
-		rows[n].package_label = pin->_present.package_label ? pin->package_label : NULL;
-		rows[n].label = pin->_present.board_label ? pin->board_label : rows[n].package_label;
+		/*
+		 * `struct dpll_pin_get_rsp::_present` layout varies across
+		 * kernel-tools-libs versions. Rely on pointer presence instead.
+		 */
+		rows[n].package_label = pin->package_label ? pin->package_label : NULL;
+		rows[n].label = rows[n].package_label;
 		rows[n].state = pd->_present.state ? (int)pd->state : -1;
 		rows[n].prio = pd->_present.prio ? (int)pd->prio : -1;
 		rows[n].has_phase_offset = pd->_present.phase_offset ? true : false;
