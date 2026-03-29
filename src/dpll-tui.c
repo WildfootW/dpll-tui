@@ -189,6 +189,14 @@ static int load_device_status(struct ynl_sock *sock, uint32_t dev_id, DeviceStat
 	return 0;
 }
 
+static void free_pin_rows(PinRow *rows, size_t n)
+{
+	if (!rows) return;
+	for (size_t i = 0; i < n; i++)
+		free((void *)rows[i].package_label);
+	free(rows);
+}
+
 static size_t build_pin_rows(struct ynl_sock *sock, uint32_t dev_id, PinRow **out)
 {
 	struct dpll_pin_get_req_dump dreq = {0};
@@ -220,7 +228,7 @@ static size_t build_pin_rows(struct ynl_sock *sock, uint32_t dev_id, PinRow **ou
 				rows = nr;
 			}
 			rows[n].pin_id = pin->id;
-			rows[n].package_label = pin->package_label ? pin->package_label : NULL;
+			rows[n].package_label = pin->package_label ? strdup(pin->package_label) : NULL;
 			rows[n].label = rows[n].package_label;
 			rows[n].state = pd->_present.state ? (int)pd->state : -1;
 			rows[n].prio = pd->_present.prio ? (int)pd->prio : -1;
@@ -319,7 +327,7 @@ int main(void)
 	while (1) {
 		time_t now = time(NULL);
 		if (now != (time_t)-1 && (now - last_refresh) >= 1) {
-			free(rows); rows = NULL;
+			free_pin_rows(rows, nrows); rows = NULL;
 			nrows = build_pin_rows(ys, dev_ids[sel_dev], &rows);
 			if (sel_pin >= nrows) sel_pin = nrows ? nrows - 1 : 0;
 			if (top > (int)sel_pin) top = (int)sel_pin;
@@ -403,6 +411,6 @@ int main(void)
 	}
 
 	endwin();
-	free(rows);
+	free_pin_rows(rows, nrows);
 	return 0;
 }
