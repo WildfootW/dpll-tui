@@ -216,11 +216,11 @@ static int find_pin_by_package_label(struct ynl_sock *sock,
 	struct dpll_pin_get_list *list = dpll_pin_get_dump(sock, &req);
 	if (!list) return -1;
 
-	for (struct dpll_pin_get_list *it = list; it; it = it->next) {
-		if (it->obj.package_label &&
-		    strncmp(it->obj.package_label, package_label,
+	ynl_dump_foreach(list, pin) {
+		if (pin->package_label &&
+		    strncmp(pin->package_label, package_label,
 			    strlen(package_label)) == 0) {
-			memcpy(out, &it->obj, sizeof(*out));
+			memcpy(out, pin, sizeof(*out));
 			return 0;
 		}
 	}
@@ -254,10 +254,10 @@ int dpll_find_device_id_by_type(struct ynl_sock *sock, enum dpll_type device_typ
 	if (!list) return -1;
 
 	int device_id = -1;
-	for (struct dpll_device_get_list *it = list; it; it = it->next) {
-		if (it->obj._present.type && it->obj.type == device_type &&
-		    it->obj._present.id) {
-			device_id = it->obj.id;
+	ynl_dump_foreach(list, dev) {
+		if (dev->_present.type && dev->type == device_type &&
+		    dev->_present.id) {
+			device_id = dev->id;
 			break;
 		}
 	}

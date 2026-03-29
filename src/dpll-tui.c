@@ -197,42 +197,39 @@ static size_t build_pin_rows(struct ynl_sock *sock, uint32_t dev_id, PinRow **ou
 	PinRow *rows = calloc(cap, sizeof(*rows));
 	if (!rows) { if (list) dpll_pin_get_list_free(list); return 0; }
 
-	for (struct dpll_pin_get_list *it = list; it; it = it->next) {
-		struct dpll_pin_get_rsp *pin = &it->obj;
-		if (!pin->_present.id) continue;
+	if (list) {
+		ynl_dump_foreach(list, pin) {
+			if (!pin->_present.id) continue;
 
-		struct dpll_pin_parent_device *pd = NULL;
-		if (pin->parent_device) {
-			for (unsigned i = 0; i < pin->_count.parent_device; i++) {
-				if (pin->parent_device[i]._present.parent_id &&
-				    pin->parent_device[i].parent_id == dev_id) {
-					pd = &pin->parent_device[i];
-					break;
+			struct dpll_pin_parent_device *pd = NULL;
+			if (pin->parent_device) {
+				for (unsigned i = 0; i < pin->_count.parent_device; i++) {
+					if (pin->parent_device[i]._present.parent_id &&
+					    pin->parent_device[i].parent_id == dev_id) {
+						pd = &pin->parent_device[i];
+						break;
+					}
 				}
 			}
-		}
-		if (!pd) continue;
+			if (!pd) continue;
 
-		if (n == cap) {
-			cap *= 2;
-			PinRow *nr = realloc(rows, cap * sizeof(*rows));
-			if (!nr) break;
-			rows = nr;
+			if (n == cap) {
+				cap *= 2;
+				PinRow *nr = realloc(rows, cap * sizeof(*rows));
+				if (!nr) break;
+				rows = nr;
+			}
+			rows[n].pin_id = pin->id;
+			rows[n].package_label = pin->package_label ? pin->package_label : NULL;
+			rows[n].label = rows[n].package_label;
+			rows[n].state = pd->_present.state ? (int)pd->state : -1;
+			rows[n].prio = pd->_present.prio ? (int)pd->prio : -1;
+			rows[n].has_phase_offset = pd->_present.phase_offset ? true : false;
+			rows[n].phase_offset = pd->_present.phase_offset ? (int64_t)pd->phase_offset : 0;
+			n++;
 		}
-		rows[n].pin_id = pin->id;
-		/*
-		 * `struct dpll_pin_get_rsp::_present` layout varies across
-		 * kernel-tools-libs versions. Rely on pointer presence instead.
-		 */
-		rows[n].package_label = pin->package_label ? pin->package_label : NULL;
-		rows[n].label = rows[n].package_label;
-		rows[n].state = pd->_present.state ? (int)pd->state : -1;
-		rows[n].prio = pd->_present.prio ? (int)pd->prio : -1;
-		rows[n].has_phase_offset = pd->_present.phase_offset ? true : false;
-		rows[n].phase_offset = pd->_present.phase_offset ? (int64_t)pd->phase_offset : 0;
-		n++;
+		dpll_pin_get_list_free(list);
 	}
-	if (list) dpll_pin_get_list_free(list);
 	*out = rows;
 	return n;
 }
