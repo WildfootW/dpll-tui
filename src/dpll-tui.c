@@ -32,6 +32,9 @@
 
 extern const struct ynl_family ynl_dpll_family;
 
+FILE    *g_log_file;
+LogLevel g_log_level;
+
 /* ---- pin state name table ---- */
 typedef struct {
 	int value;
