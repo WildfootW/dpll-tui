@@ -56,15 +56,75 @@ static const char *state_name(int st)
 	return "?";
 }
 
+static const char *pin_type_str(int t)
+{
+	switch (t) {
+	case DPLL_PIN_TYPE_MUX:             return "MUX";
+	case DPLL_PIN_TYPE_EXT:             return "EXT";
+	case DPLL_PIN_TYPE_SYNCE_ETH_PORT:  return "SyncE";
+	case DPLL_PIN_TYPE_INT_OSCILLATOR:  return "Osc";
+	case DPLL_PIN_TYPE_GNSS:            return "GNSS";
+	default:                            return "?";
+	}
+}
+
+static const char *pin_dir_str(int d)
+{
+	switch (d) {
+	case DPLL_PIN_DIRECTION_INPUT:  return "input";
+	case DPLL_PIN_DIRECTION_OUTPUT: return "output";
+	default:                        return "?";
+	}
+}
+
+static const char *lock_err_str(int e)
+{
+	switch (e) {
+	case DPLL_LOCK_STATUS_ERROR_NONE:      return "none";
+	case DPLL_LOCK_STATUS_ERROR_UNDEFINED: return "undefined";
+	case DPLL_LOCK_STATUS_ERROR_MEDIA_DOWN: return "media-down";
+	case DPLL_LOCK_STATUS_ERROR_FRACTIONAL_FREQUENCY_OFFSET_TOO_HIGH:
+		return "ffo-high";
+	default: return "-";
+	}
+}
+
+static void caps_str(uint32_t c, char *buf, size_t len)
+{
+	buf[0] = '\0';
+	if (c & DPLL_PIN_CAPABILITIES_DIRECTION_CAN_CHANGE)
+		strncat(buf, "dir,", len - strlen(buf) - 1);
+	if (c & DPLL_PIN_CAPABILITIES_PRIORITY_CAN_CHANGE)
+		strncat(buf, "prio,", len - strlen(buf) - 1);
+	if (c & DPLL_PIN_CAPABILITIES_STATE_CAN_CHANGE)
+		strncat(buf, "state,", len - strlen(buf) - 1);
+	size_t l = strlen(buf);
+	if (l > 0 && buf[l - 1] == ',')
+		buf[l - 1] = '\0';
+	if (!buf[0])
+		strncpy(buf, "-", len);
+}
+
 /* ---- per-pin row ---- */
 typedef struct {
 	const char *label;
 	const char *package_label;
+	const char *board_label;
+	const char *panel_label;
 	uint32_t pin_id;
 	int state;
 	int prio;
+	int pin_type;
+	int direction;
 	bool has_phase_offset;
 	int64_t phase_offset;
+	bool has_frequency;
+	uint64_t frequency;
+	bool has_phase_adjust;
+	int32_t phase_adjust;
+	bool has_ffo;
+	int64_t ffo;
+	uint32_t capabilities;
 } PinRow;
 
 /* ---- device status ---- */
@@ -74,6 +134,12 @@ typedef struct {
 	const char *type_name;
 	enum dpll_lock_status lock_status;
 	enum dpll_mode mode;
+	char module_name[64];
+	bool has_clock_id;
+	uint64_t clock_id;
+	int lock_status_error;
+	enum dpll_mode mode_supported[8];
+	int n_mode_supported;
 } DeviceStatus;
 
 static const char *type_str(enum dpll_type t)
@@ -185,6 +251,26 @@ static int load_device_status(struct ynl_sock *sock, uint32_t dev_id, DeviceStat
 	out->device_id = dev_id;
 	out->lock_status = rsp->_present.lock_status ? rsp->lock_status : DPLL_LOCK_STATUS_UNLOCKED;
 	out->mode = rsp->_present.mode ? rsp->mode : (enum dpll_mode)0;
+
+	out->module_name[0] = '\0';
+	if (rsp->module_name)
+		strncpy(out->module_name, rsp->module_name, sizeof(out->module_name) - 1);
+
+	out->has_clock_id = rsp->_present.clock_id ? true : false;
+	out->clock_id = rsp->_present.clock_id ? rsp->clock_id : 0;
+
+	out->lock_status_error = rsp->_present.lock_status_error
+		? (int)rsp->lock_status_error : -1;
+
+	out->n_mode_supported = 0;
+	if (rsp->_count.mode_supported) {
+		for (unsigned i = 0; i < rsp->_count.mode_supported &&
+		     i < 8; i++) {
+			out->mode_supported[out->n_mode_supported++] =
+				(enum dpll_mode)rsp->mode_supported[i];
+		}
+	}
+
 	dpll_device_get_rsp_free(rsp);
 	return 0;
 }
@@ -192,8 +278,11 @@ static int load_device_status(struct ynl_sock *sock, uint32_t dev_id, DeviceStat
 static void free_pin_rows(PinRow *rows, size_t n)
 {
 	if (!rows) return;
-	for (size_t i = 0; i < n; i++)
+	for (size_t i = 0; i < n; i++) {
 		free((void *)rows[i].package_label);
+		free((void *)rows[i].board_label);
+		free((void *)rows[i].panel_label);
+	}
 	free(rows);
 }
 
@@ -229,11 +318,22 @@ static size_t build_pin_rows(struct ynl_sock *sock, uint32_t dev_id, PinRow **ou
 			}
 			rows[n].pin_id = pin->id;
 			rows[n].package_label = pin->package_label ? strdup(pin->package_label) : NULL;
+			rows[n].board_label = pin->board_label ? strdup(pin->board_label) : NULL;
+			rows[n].panel_label = pin->panel_label ? strdup(pin->panel_label) : NULL;
 			rows[n].label = rows[n].package_label;
 			rows[n].state = pd->_present.state ? (int)pd->state : -1;
 			rows[n].prio = pd->_present.prio ? (int)pd->prio : -1;
 			rows[n].has_phase_offset = pd->_present.phase_offset ? true : false;
 			rows[n].phase_offset = pd->_present.phase_offset ? (int64_t)pd->phase_offset : 0;
+			rows[n].pin_type = pin->_present.type ? (int)pin->type : -1;
+			rows[n].direction = pd->_present.direction ? (int)pd->direction : -1;
+			rows[n].has_frequency = pin->_present.frequency ? true : false;
+			rows[n].frequency = pin->_present.frequency ? pin->frequency : 0;
+			rows[n].has_phase_adjust = pin->_present.phase_adjust ? true : false;
+			rows[n].phase_adjust = pin->_present.phase_adjust ? pin->phase_adjust : 0;
+			rows[n].has_ffo = pin->_present.fractional_frequency_offset ? true : false;
+			rows[n].ffo = pin->_present.fractional_frequency_offset ? pin->fractional_frequency_offset : 0;
+			rows[n].capabilities = pin->_present.capabilities ? pin->capabilities : 0;
 			n++;
 		}
 		dpll_pin_get_list_free(list);
@@ -243,6 +343,9 @@ static size_t build_pin_rows(struct ynl_sock *sock, uint32_t dev_id, PinRow **ou
 }
 
 /* ---- drawing ---- */
+#define HDR_ROWS  4   /* rows 0-3: header area */
+#define DETAIL_ROWS 4 /* rows at bottom: detail pane + status */
+
 static void draw_header(const DeviceStatus *ds, int sel_dev, int ndev)
 {
 	erase();
@@ -253,19 +356,35 @@ static void draw_header(const DeviceStatus *ds, int sel_dev, int ndev)
 	         dpll_lock_status_str(ds->lock_status),
 	         dpll_mode_str(ds->mode));
 	attroff(A_BOLD);
-	mvprintw(1, 0, " q quit | Tab device | Up/Down select | s state | p prio | a phase_adj | r refresh");
-	mvhline(2, 0, ACS_HLINE, COLS);
+
+	char modes_buf[128] = "";
+	for (int i = 0; i < ds->n_mode_supported; i++) {
+		if (i) strncat(modes_buf, ",", sizeof(modes_buf) - strlen(modes_buf) - 1);
+		strncat(modes_buf, dpll_mode_str(ds->mode_supported[i]),
+			sizeof(modes_buf) - strlen(modes_buf) - 1);
+	}
+	if (!modes_buf[0]) strncpy(modes_buf, "-", sizeof(modes_buf));
+
+	mvprintw(1, 0, " module=%-12s clock=0x%016" PRIx64 "  modes=[%s]  lock_err=%s",
+	         ds->module_name[0] ? ds->module_name : "-",
+	         ds->clock_id,
+	         modes_buf,
+	         lock_err_str(ds->lock_status_error));
+
+	mvprintw(2, 0, " q quit | Tab device | Up/Down select | s state | p prio | a phase_adj | r refresh");
+	mvhline(3, 0, ACS_HLINE, COLS);
 }
 
 static void draw_pins(const PinRow *rows, size_t n, size_t sel, int top)
 {
-	int hdr_row = 3, data_start = 4;
+	int hdr_row = HDR_ROWS, data_start = HDR_ROWS + 1;
 	attron(A_UNDERLINE);
 	mvprintw(hdr_row, 0, " %-4s %-6s %-14s %-6s %-14s %-s",
 	         "#", "pin_id", "state", "prio", "phase_off(fs)", "label");
 	attroff(A_UNDERLINE);
 
-	int visible = LINES - data_start - 2;
+	int visible = LINES - data_start - DETAIL_ROWS;
+	if (visible < 1) visible = 1;
 	for (int i = 0; i < visible; i++) {
 		int idx = top + i;
 		if (idx < 0 || (size_t)idx >= n) break;
@@ -283,6 +402,37 @@ static void draw_pins(const PinRow *rows, size_t n, size_t sel, int top)
 		         COLS - 50, r->label ? r->label : "(null)");
 		if ((size_t)idx == sel) attroff(A_REVERSE);
 	}
+}
+
+static void draw_pin_detail(const PinRow *r)
+{
+	int base = LINES - DETAIL_ROWS;
+	mvhline(base, 0, ACS_HLINE, COLS);
+
+	char freq_buf[32], padj_buf[32], ffo_buf[32], caps_buf[64];
+	if (r->has_frequency)
+		snprintf(freq_buf, sizeof(freq_buf), "%" PRIu64 " Hz", r->frequency);
+	else
+		snprintf(freq_buf, sizeof(freq_buf), "-");
+	if (r->has_phase_adjust)
+		snprintf(padj_buf, sizeof(padj_buf), "%" PRId32 " fs", r->phase_adjust);
+	else
+		snprintf(padj_buf, sizeof(padj_buf), "-");
+	if (r->has_ffo)
+		snprintf(ffo_buf, sizeof(ffo_buf), "%" PRId64 " ppb", r->ffo);
+	else
+		snprintf(ffo_buf, sizeof(ffo_buf), "-");
+	caps_str(r->capabilities, caps_buf, sizeof(caps_buf));
+
+	mvprintw(base + 1, 0, " pin %-4" PRIu32 " type=%-5s  dir=%-6s  freq=%-16s  phase_adj=%-12s  ffo=%s",
+	         r->pin_id,
+	         r->pin_type >= 0 ? pin_type_str(r->pin_type) : "-",
+	         r->direction >= 0 ? pin_dir_str(r->direction) : "-",
+	         freq_buf, padj_buf, ffo_buf);
+	mvprintw(base + 2, 0, "      board=%-20s  panel=%-20s  caps=[%s]",
+	         r->board_label ? r->board_label : "-",
+	         r->panel_label ? r->panel_label : "-",
+	         caps_buf);
 }
 
 /* ---- main ---- */
@@ -340,11 +490,14 @@ int main(void)
 			.type_name = type_str(dev_types[sel_dev]),
 			.lock_status = DPLL_LOCK_STATUS_UNLOCKED,
 			.mode = (enum dpll_mode)0,
+			.lock_status_error = -1,
 		};
 		(void)load_device_status(ys, dev_ids[sel_dev], &ds);
 
 		draw_header(&ds, sel_dev, dev_count);
 		draw_pins(rows, nrows, sel_pin, top);
+		if (rows && nrows && sel_pin < nrows)
+			draw_pin_detail(&rows[sel_pin]);
 		refresh();
 
 		int ch = getch();
@@ -363,7 +516,8 @@ int main(void)
 		}
 		if (ch == KEY_DOWN) {
 			if (nrows && sel_pin + 1 < nrows) sel_pin++;
-			int vis = LINES - 4 - 2;
+			int vis = LINES - (HDR_ROWS + 1) - DETAIL_ROWS;
+			if (vis < 1) vis = 1;
 			if ((int)sel_pin >= top + vis) top = (int)sel_pin - vis + 1;
 			continue;
 		}
