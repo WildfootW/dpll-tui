@@ -42,9 +42,9 @@ typedef struct {
 } StateEntry;
 
 static const StateEntry pin_states[] = {
-	{ DPLL_PIN_STATE_CONNECTED,    "connected"    },
-	{ DPLL_PIN_STATE_DISCONNECTED, "disconnected" },
-	{ DPLL_PIN_STATE_SELECTABLE,   "selectable"   },
+	{ DPLL_PIN_STATE_CONNECTED,    "conn"  },
+	{ DPLL_PIN_STATE_DISCONNECTED, "disc"  },
+	{ DPLL_PIN_STATE_SELECTABLE,   "sel"   },
 };
 #define N_PIN_STATES (int)(sizeof(pin_states) / sizeof(pin_states[0]))
 
@@ -54,6 +54,16 @@ static const char *state_name(int st)
 		if (pin_states[i].value == st)
 			return pin_states[i].name;
 	return "?";
+}
+
+static const char *state_name_full(int st)
+{
+	switch (st) {
+	case DPLL_PIN_STATE_CONNECTED:    return "connected";
+	case DPLL_PIN_STATE_DISCONNECTED: return "disconnected";
+	case DPLL_PIN_STATE_SELECTABLE:   return "selectable";
+	default:                          return "?";
+	}
 }
 
 static const char *pin_type_str(int t)
@@ -216,7 +226,7 @@ static int state_menu(void)
 			move(row_base + i, 0);
 			clrtoeol();
 			if (i == sel) attron(A_REVERSE);
-			mvprintw(row_base + i, 2, "[%d] %s", pin_states[i].value, pin_states[i].name);
+			mvprintw(row_base + i, 2, "[%d] %s", pin_states[i].value, state_name_full(pin_states[i].value));
 			if (i == sel) attroff(A_REVERSE);
 		}
 		move(row_base + N_PIN_STATES, 0);
@@ -379,8 +389,8 @@ static void draw_pins(const PinRow *rows, size_t n, size_t sel, int top)
 {
 	int hdr_row = HDR_ROWS, data_start = HDR_ROWS + 1;
 	attron(A_UNDERLINE);
-	mvprintw(hdr_row, 0, " %-4s %-6s %-14s %-6s %-14s %-s",
-	         "#", "pin_id", "state", "prio", "phase_off(fs)", "label");
+	mvprintw(hdr_row, 0, " %-4s %-6s %-6s %-5s %-6s %-16s %-14s %-s",
+	         "#", "pin_id", "type", "state", "prio", "freq", "phase_off(fs)", "label");
 	attroff(A_UNDERLINE);
 
 	int visible = LINES - data_start - DETAIL_ROWS;
@@ -390,16 +400,22 @@ static void draw_pins(const PinRow *rows, size_t n, size_t sel, int top)
 		if (idx < 0 || (size_t)idx >= n) break;
 
 		const PinRow *r = &rows[idx];
-		char ph[24];
+		char ph[24], freq[20];
 		if (r->has_phase_offset)
 			snprintf(ph, sizeof(ph), "%" PRId64, r->phase_offset);
 		else
 			snprintf(ph, sizeof(ph), "-");
+		if (r->has_frequency)
+			snprintf(freq, sizeof(freq), "%" PRIu64, r->frequency);
+		else
+			snprintf(freq, sizeof(freq), "-");
 
 		if ((size_t)idx == sel) attron(A_REVERSE);
-		mvprintw(data_start + i, 0, " %-4d %-6" PRIu32 " %-14s %-6d %-14s %-.*s",
-		         idx, r->pin_id, state_name(r->state), r->prio, ph,
-		         COLS - 50, r->label ? r->label : "(null)");
+		mvprintw(data_start + i, 0, " %-4d %-6" PRIu32 " %-6s %-5s %-6d %-16s %-14s %-.*s",
+		         idx, r->pin_id,
+		         r->pin_type >= 0 ? pin_type_str(r->pin_type) : "-",
+		         state_name(r->state), r->prio, freq, ph,
+		         COLS - 65, r->label ? r->label : "(null)");
 		if ((size_t)idx == sel) attroff(A_REVERSE);
 	}
 }
@@ -409,11 +425,7 @@ static void draw_pin_detail(const PinRow *r)
 	int base = LINES - DETAIL_ROWS;
 	mvhline(base, 0, ACS_HLINE, COLS);
 
-	char freq_buf[32], padj_buf[32], ffo_buf[32], caps_buf[64];
-	if (r->has_frequency)
-		snprintf(freq_buf, sizeof(freq_buf), "%" PRIu64 " Hz", r->frequency);
-	else
-		snprintf(freq_buf, sizeof(freq_buf), "-");
+	char padj_buf[32], ffo_buf[32], caps_buf[64];
 	if (r->has_phase_adjust)
 		snprintf(padj_buf, sizeof(padj_buf), "%" PRId32 " fs", r->phase_adjust);
 	else
@@ -424,11 +436,10 @@ static void draw_pin_detail(const PinRow *r)
 		snprintf(ffo_buf, sizeof(ffo_buf), "-");
 	caps_str(r->capabilities, caps_buf, sizeof(caps_buf));
 
-	mvprintw(base + 1, 0, " pin %-4" PRIu32 " type=%-5s  dir=%-6s  freq=%-16s  phase_adj=%-12s  ffo=%s",
+	mvprintw(base + 1, 0, " pin %-4" PRIu32 " dir=%-6s  phase_adj=%-12s  ffo=%s",
 	         r->pin_id,
-	         r->pin_type >= 0 ? pin_type_str(r->pin_type) : "-",
 	         r->direction >= 0 ? pin_dir_str(r->direction) : "-",
-	         freq_buf, padj_buf, ffo_buf);
+	         padj_buf, ffo_buf);
 	mvprintw(base + 2, 0, "      board=%-20s  panel=%-20s  caps=[%s]",
 	         r->board_label ? r->board_label : "-",
 	         r->panel_label ? r->panel_label : "-",
@@ -531,7 +542,7 @@ int main(void)
 			int v = state_menu();
 			if (v >= 0) {
 				int old = dpll_pin_set_state(ys, dev_ids[sel_dev], (char *)pkg, v);
-				status_msg("set_state(%s, %s): old=%s", pkg, state_name(v), old >= 0 ? state_name(old) : "err");
+				status_msg("set_state(%s, %s): old=%s", pkg, state_name_full(v), old >= 0 ? state_name_full(old) : "err");
 				last_refresh = 0;
 			}
 			continue;
